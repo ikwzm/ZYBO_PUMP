@@ -84,10 +84,10 @@
 /******************************************************************************
  * Pump Processor Control Register
  ******************************************************************************
- * Control[4]  = 1:転送を開始する.           0:意味無し.
- * Control[5]  = 1:転送を中止する.           0:意味無し.
- * Control[6]  = 1:転送を一時中断する.       0:転送を再開する.
- * Control[7]  = 1:モジュールをリセットする. 0:リセットを解除する.
+ * Control[4]  = 1:オペレーションを開始する.     0:意味無し.
+ * Control[5]  = 1:オペレーションを中止する.     0:意味無し.
+ * Control[6]  = 1:オペレーションを一時中断する. 0:オペレーションを再開する.
+ * Control[7]  = 1:モジュールをリセットする.     0:リセットを解除する.
  ******************************************************************************/
 #define PUMP_PROC_REGS_CTRL_START  (0x10000000)
 #define PUMP_PROC_REGS_CTRL_STOP   (0x20000000)
@@ -628,7 +628,7 @@ static void pump_proc_irq_work(struct work_struct* work)
 /**
  *
  */
-int pump_proc_init(
+int pump_proc_setup(
     struct pump_proc_data* this     ,
     struct device*         dev      ,
     int                    direction,
@@ -650,3 +650,13 @@ int pump_proc_init(
     INIT_WORK(&this->irq_work, pump_proc_irq_work);
     return 0;
 }
+/**
+ *
+ */
+int pump_proc_cleanup(struct pump_proc_data* this)
+{
+    cancel_work_sync(&this->irq_work);
+    free_opecode_table(this->dev, &this->op_list);
+    return 0;
+}
+

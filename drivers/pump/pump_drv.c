@@ -735,7 +735,7 @@ static int pump_driver_probe(struct platform_device *pdev)
     const unsigned int          DONE_DEVICE_CREATE          = (1 <<  7);
     const unsigned int          DONE_GET_IRQ_RESOUCE        = (1 <<  8);
     const unsigned int          DONE_IRQ_REQUEST            = (1 <<  9);
-    const unsigned int          DONE_PUMP_PROC_INIT         = (1 << 10);
+    const unsigned int          DONE_PUMP_PROC_SETUP        = (1 << 10);
     unsigned long               core_regs_addr = 0L;
     unsigned long               core_regs_size = 0L;
     unsigned long               proc_regs_addr = 0L;
@@ -918,7 +918,7 @@ static int pump_driver_probe(struct platform_device *pdev)
      */
     {
         int status;
-        status = pump_proc_init(
+        status = pump_proc_setup(
                      &this->pump_proc_data, /* struct pump_proc_data* this        */
                      this->dev            , /* struct device*         dev         */
                      this->direction      , /* int                    direction   */
@@ -927,7 +927,7 @@ static int pump_driver_probe(struct platform_device *pdev)
                      (void*)this            /* void*                  done_arg    */
                  );
         this->pump_proc_data.link_mode = PUMP_LINK_AXI_MODE;
-        done |= DONE_PUMP_PROC_INIT;
+        done |= DONE_PUMP_PROC_SETUP;
     }
     /*
      *
@@ -953,6 +953,7 @@ static int pump_driver_probe(struct platform_device *pdev)
     return 0;
 
  failed:
+    if (done & DONE_PUMP_PROC_SETUP     ) { pump_proc_cleanup(&this->pump_proc_data);}
     if (done & DONE_IRQ_REQUEST         ) { free_irq(this->irq, this); }
     if (done & DONE_DEVICE_CREATE       ) { device_destroy(pump_sys_class, this->device_number);}
     if (done & DONE_MAP_CORE_REGS_ADDR  ) { iounmap(this->core_regs_addr); }
@@ -980,7 +981,7 @@ static int pump_driver_remove(struct platform_device *pdev)
     if (!this)
         return -ENODEV;
 
-    pump_proc_clear_opcode_table(&this->pump_proc_data);
+    pump_proc_cleanup(&this->pump_proc_data);
 
     device_destroy(pump_sys_class, this->device_number);
 

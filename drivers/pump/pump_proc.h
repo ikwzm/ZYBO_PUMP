@@ -62,7 +62,7 @@ struct pump_proc_data {
 #define PUMP_PROC_DEBUG_PHASE (0x00000001)
 #define PUMP_PROC_DEBUG_IRQ   (0x00000002)
 
-int         pump_proc_init(
+int         pump_proc_setup(
                 struct pump_proc_data* this     ,
                 struct device*         dev      ,
                 int                    direction,
@@ -70,10 +70,10 @@ int         pump_proc_init(
                 void                   (*done_func)(void* done_args),
                 void*                  done_arg
             );
-
-irqreturn_t pump_proc_irq  (struct pump_proc_data* this);
-int         pump_proc_start(struct pump_proc_data* this);
-int         pump_proc_stop (struct pump_proc_data* this);
+int         pump_proc_cleanup(struct pump_proc_data* this);
+irqreturn_t pump_proc_irq    (struct pump_proc_data* this);
+int         pump_proc_start  (struct pump_proc_data* this);
+int         pump_proc_stop   (struct pump_proc_data* this);
 void        pump_proc_debug_opecode_table(struct pump_proc_data* this);
 void        pump_proc_clear_opcode_table (struct pump_proc_data* this);
 int         pump_proc_add_opecode_table_from_sg(
