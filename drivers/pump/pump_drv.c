@@ -484,7 +484,7 @@ static int pump_release(struct inode *inode, struct file *file)
  */
 static void pump_done_work(struct pump_driver_data* this)
 {
-    wake_up(&this->wait_queue);
+    wake_up_interruptible(&this->wait_queue);
 }
 
 /**
