@@ -523,7 +523,7 @@ static irqreturn_t pump_irq(int irq, void *data)
 static ssize_t pump_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
 {
     struct pump_driver_data* this       = file->private_data;
-    int                      retval     = 0;
+    int                      result     = 0;
     int                      status     = 0;
     size_t                   xfer_size  = 0;
     bool                     xfer_first = (*ppos == 0) ? 1 : 0;
@@ -535,10 +535,10 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
     if (mutex_lock_interruptible(&this->sem))
         return -ERESTARTSYS;
     /*
-     * limit_sizeを越える読み出しは、EOF(retval=0)を返す.
+     * limit_sizeを越える読み出しは、EOF(result=0)を返す.
      */
     if (*ppos >= this->limit_size) {
-        retval = 0;
+        result = 0;
         goto return_unlock;
     }
     /*
@@ -563,7 +563,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
                  xfer_last     /* bool                     xfer_last  */
     );
     if (status != 0) {
-        retval = status;
+        result = status;
         goto return_unlock;
     }
     /*
@@ -571,7 +571,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
      */
     status = pump_proc_start(&this->pump_proc_data);
     if (status != 0) {
-        retval = status;
+        result = status;
         goto return_release;
     }
     status = wait_event_interruptible_timeout(
@@ -581,7 +581,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
              );
     if (status == 0) {
         pump_proc_stop(&this->pump_proc_data);
-        retval = -ETIMEDOUT;
+        result = -ETIMEDOUT;
         goto return_release;
     }
     if (0) {
@@ -599,7 +599,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
      *
      */
     *ppos += xfer_size;
-    retval = xfer_size;
+    result = xfer_size;
     /*
      *
      */
@@ -607,11 +607,11 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
     pump_buffer_release(this);
  return_unlock:
     mutex_unlock(&this->sem);
-    return retval;
+    return result;
 }
 
 /**
- * pump_write() - The is the driver read function.
+ * pump_write() - The is the driver write function.
  * @file:	Pointer to the file structure.
  * @buff:	Pointer to the user buffer.
  * @count:	The number of bytes to be written.
@@ -621,7 +621,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
 static ssize_t pump_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
 {
     struct pump_driver_data* this       = file->private_data;
-    int                      retval     = 0;
+    int                      result     = 0;
     int                      status     = 0;
     size_t                   xfer_size  = count;
     bool                     xfer_first = (*ppos == 0) ? 1 : 0;
@@ -637,7 +637,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
      */
     if (*ppos >= this->limit_size) {
         *ppos += count;
-        retval = count;
+        result = count;
         goto return_unlock;
     }
     /*
@@ -662,7 +662,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
                  xfer_last     /* bool                     xfer_last  */
     );
     if (status != 0) {
-        retval = status;
+        result = status;
         goto return_unlock;
     }
     /*
@@ -670,7 +670,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
      */
     status = pump_proc_start(&this->pump_proc_data);
     if (status != 0) {
-        retval = status;
+        result = status;
         goto return_release;
     }
     status = wait_event_interruptible_timeout(
@@ -680,7 +680,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
              );
     if (status == 0) {
         pump_proc_stop(&this->pump_proc_data);
-        retval = -ETIMEDOUT;
+        result = -ETIMEDOUT;
         goto return_release;
     }
     if (0) {
@@ -698,7 +698,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
      *
      */
     *ppos += xfer_size;
-    retval = xfer_size;
+    result = xfer_size;
     /*
      *
      */
@@ -706,7 +706,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
     pump_buffer_release(this);
  return_unlock:
     mutex_unlock(&this->sem);
-    return retval;
+    return result;
 }
 
 /**
@@ -736,7 +736,7 @@ static const struct file_operations pump_driver_outlet_fops = {
 static int pump_driver_probe(struct platform_device *pdev)
 {
     struct pump_driver_data*    this     = NULL;
-    int                         retval   = 0;
+    int                         result   = 0;
     unsigned int                done     = 0;
     const unsigned int          DONE_ADD_CHRDEV             = (1 <<  0);
     const unsigned int          DONE_GET_CORE_REGS_RESOUCE  = (1 <<  1);
@@ -765,7 +765,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         this = kzalloc(sizeof(*this), GFP_KERNEL);
         if (IS_ERR_OR_NULL(this)) {
             dev_err(&pdev->dev, "couldn't allocate device private record\n");
-            retval = PTR_ERR(this);
+            result = PTR_ERR(this);
             this = NULL;
             goto failed;
         }
@@ -780,7 +780,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         status = of_property_read_u32(pdev->dev.of_node, "minor-number", &minor_number);
         if (status != 0) {
             dev_err(&pdev->dev, "invalid property minor number\n");
-            retval = -ENODEV;
+            result = -ENODEV;
             goto failed;
         }
         this->device_number = MKDEV(MAJOR(pump_device_number), MINOR(minor_number));
@@ -794,7 +794,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         status = of_property_read_u32(pdev->dev.of_node, "direction", &direction);
         if ((status != 0) || (direction > 1)) {
             dev_err(&pdev->dev, "invalid property direction \n");
-            retval = -ENODEV;
+            result = -ENODEV;
             goto failed;
         }
         this->direction = direction;
@@ -813,7 +813,7 @@ static int pump_driver_probe(struct platform_device *pdev)
                     );
         if (IS_ERR_OR_NULL(this->dev)) {
             dev_err(&pdev->dev, "device_create() failed\n");
-            retval = PTR_ERR(this->dev);
+            result = PTR_ERR(this->dev);
             this->dev = NULL;
             goto failed;
         }
@@ -828,7 +828,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         this->core_regs_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
         if (this->core_regs_res == NULL) {
             dev_err(&pdev->dev, "invalid register address\n");
-            retval = -ENODEV;
+            result = -ENODEV;
             goto failed;
         }
         done |= DONE_GET_CORE_REGS_RESOUCE;
@@ -837,7 +837,7 @@ static int pump_driver_probe(struct platform_device *pdev)
 
         if (request_mem_region(core_regs_addr, core_regs_size, device_name) == NULL) {
             dev_err(&pdev->dev, "couldn't lock memory region at %pr\n", this->core_regs_res);
-            retval = -EBUSY;
+            result = -EBUSY;
             goto failed;
         }
         done |= DONE_REQ_CORE_REGS_REGION;
@@ -845,7 +845,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         this->core_regs_addr = ioremap_nocache(core_regs_addr, core_regs_size);
         if (this->core_regs_addr == NULL) {
             dev_err(&pdev->dev, "ioremap(%pr) failed\n", this->core_regs_res);
-            retval = -ENODEV;
+            result = -ENODEV;
             goto failed;
         }
         done |= DONE_MAP_CORE_REGS_ADDR;
@@ -861,7 +861,7 @@ static int pump_driver_probe(struct platform_device *pdev)
 
             if (request_mem_region(proc_regs_addr, proc_regs_size, device_name) == NULL) {
                 dev_err(&pdev->dev, "couldn't lock memory region at %pr\n", this->proc_regs_res);
-                retval = -EBUSY;
+                result = -EBUSY;
                 goto failed;
             }
             done |= DONE_REQ_PROC_REGS_REGION;
@@ -869,7 +869,7 @@ static int pump_driver_probe(struct platform_device *pdev)
             this->proc_regs_addr = ioremap_nocache(proc_regs_addr, proc_regs_size);
             if (this->proc_regs_addr == NULL) {
                 dev_err(&pdev->dev, "ioremap(%pr) failed\n", this->proc_regs_res);
-                retval = -ENODEV;
+                result = -ENODEV;
                 goto failed;
             }
             done |= DONE_MAP_PROC_REGS_ADDR;
@@ -883,7 +883,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         this->irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
         if (this->irq_res == NULL) {
             dev_err(&pdev->dev, "interrupt not found\n");
-            retval = -ENODEV;
+            result = -ENODEV;
             goto failed;
         }
         done |= DONE_GET_IRQ_RESOUCE;
@@ -892,7 +892,7 @@ static int pump_driver_probe(struct platform_device *pdev)
 
         if (request_irq(this->irq, pump_irq, IRQF_DISABLED | IRQF_SHARED, device_name, this) != 0) {
             dev_err(&pdev->dev, "request_irq(%pr) failed\n", this->irq_res);
-            retval = -EBUSY;
+            result = -EBUSY;
             goto failed;
         }
         done |= DONE_IRQ_REQUEST;
@@ -908,7 +908,7 @@ static int pump_driver_probe(struct platform_device *pdev)
         this->cdev.owner = THIS_MODULE;
         if (cdev_add(&this->cdev, this->device_number, 1) != 0) {
             dev_err(&pdev->dev, "cdev_add() failed\n");
-            retval = -ENODEV;
+            result = -ENODEV;
             goto failed;
         }
         done |= DONE_ADD_CHRDEV;
@@ -975,7 +975,7 @@ static int pump_driver_probe(struct platform_device *pdev)
     if (done & DONE_REQ_PROC_REGS_REGION) { release_mem_region(proc_regs_addr, proc_regs_size);}
     if (done & DONE_ADD_CHRDEV          ) { cdev_del(&this->cdev); }
     if (this != NULL)                     { kfree(this); }
-    return retval;
+    return result;
 }
 
 
@@ -1054,14 +1054,14 @@ static struct platform_driver pump_platform_driver = {
  */
 static int __init pump_module_init(void)
 {
-    int                retval = 0;
+    int                result = 0;
     unsigned int       done   = 0;
     const unsigned int DONE_ALLOC_CHRDEV    = (1 << 0);
     const unsigned int DONE_CREATE_CLASS    = (1 << 1);
     const unsigned int DONE_REGISTER_DRIVER = (1 << 2);
 
-    retval = alloc_chrdev_region(&pump_device_number, 0, 0, DRIVER_NAME);
-    if (retval != 0) {
+    result = alloc_chrdev_region(&pump_device_number, 0, 0, DRIVER_NAME);
+    if (result != 0) {
         printk(KERN_ERR "%s: couldn't allocate device major number\n", DRIVER_NAME);
         goto failed;
     }
@@ -1070,15 +1070,15 @@ static int __init pump_module_init(void)
     pump_sys_class = class_create(THIS_MODULE, DRIVER_NAME);
     if (IS_ERR_OR_NULL(pump_sys_class)) {
         printk(KERN_ERR "%s: couldn't create sys class\n", DRIVER_NAME);
-        retval = PTR_ERR(pump_sys_class);
+        result = PTR_ERR(pump_sys_class);
         pump_sys_class = NULL;
         goto failed;
     }
     pump_sys_class->dev_attrs = pump_device_attrs;
     done |= DONE_CREATE_CLASS;
 
-    retval = platform_driver_register(&pump_platform_driver);
-    if (retval) {
+    result = platform_driver_register(&pump_platform_driver);
+    if (result) {
         printk(KERN_ERR "%s: couldn't register platform driver\n", DRIVER_NAME);
         goto failed;
     }
@@ -1091,7 +1091,7 @@ static int __init pump_module_init(void)
     if (done & DONE_CREATE_CLASS   ){class_destroy(pump_sys_class);}
     if (done & DONE_ALLOC_CHRDEV   ){unregister_chrdev_region(pump_device_number, 0);}
 
-    return retval;
+    return result;
 }
 
 /**
