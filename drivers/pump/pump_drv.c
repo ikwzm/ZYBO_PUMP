@@ -62,7 +62,7 @@
 #define DEVICE_NAME_FORMAT "pump%d"
 
 #define PUMP_DEBUG         1
-#define PUMP_SG_PACK       1
+#define PUMP_SG_PACK_MAX   ((0xFFFFFFFF & PAGE_MASK) >> PAGE_SHIFT)
 #define PUMP_TIMEOUT       (600*1000)
 
 #if     (PUMP_DEBUG == 1)
@@ -284,7 +284,7 @@ static int  pump_alloc_sg_table_from_pages(struct pump_driver_data* this, char _
     );
     if (result) {
         this->sg_nums = 0;
-        return result;
+        goto failed;
     }
 #else
     {
@@ -293,11 +293,18 @@ static int  pump_alloc_sg_table_from_pages(struct pump_driver_data* this, char _
         unsigned int        sg_nums;
         unsigned int        curr_page;
         unsigned int        next_page;
-#if (PUMP_SG_PACK == 1)
+#if (PUMP_SG_PACK_MAX > 0)
+        unsigned int        packed_page_nums = 1;
         sg_nums = 1;
-        for (next_page = 1; next_page < this->page_nums; ++next_page)
-            if (page_to_pfn(this->page_list[next_page]) != page_to_pfn(this->page_list[next_page-1]) + 1)
+        for (next_page = 1; next_page < this->page_nums; ++next_page) {
+            if ((packed_page_nums >= PUMP_SG_PACK_MAX) || 
+                (page_to_pfn(this->page_list[next_page]) != page_to_pfn(this->page_list[next_page-1]) + 1)) {
                 ++sg_nums;
+                packed_page_nums = 1;
+            } else {
+                ++packed_page_nums;
+            }
+        }
 #else
         sg_nums = this->page_nums;
 #endif
@@ -319,10 +326,16 @@ static int  pump_alloc_sg_table_from_pages(struct pump_driver_data* this, char _
         for_each_sg(this->sg_table.sgl, sg, this->sg_table.nents, sg_count) {
             size_t page_size;
             size_t xfer_size;
-#if (PUMP_SG_PACK == 1)
-            for (next_page = curr_page + 1; next_page < this->page_nums; ++next_page)
-                if (page_to_pfn(this->page_list[next_page]) != page_to_pfn(this->page_list[next_page-1]) + 1)
+#if (PUMP_SG_PACK_MAX > 0)
+            unsigned int packed_page_nums = 1;
+            for (next_page = curr_page + 1; next_page < this->page_nums; ++next_page) {
+                if ((packed_page_nums >= PUMP_SG_PACK_MAX) || 
+                    (page_to_pfn(this->page_list[next_page]) != page_to_pfn(this->page_list[next_page-1]) + 1)) {
                     break;
+                } else {
+                    ++packed_page_nums;
+                }
+            }
 #else
             next_page = curr_page + 1;
 #endif
