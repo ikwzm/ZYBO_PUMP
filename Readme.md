@@ -24,7 +24,7 @@ shell> git clone git://github.com/ikwzm/ZYBO_PUMP.git ZYBO_PUMP
 
 shell> cd ZYBO_PUMP
 
-shell> git checkout clean-project
+shell> git checkout 1.0-clean-project
 
 出来れば何もないところから始めると良い。
 
@@ -34,39 +34,35 @@ shell> git submodule init
 
 shell> git submodule update
 
-#####1.3. Vivado でプロジェクトを開く.#####
+#####1.3. Vivado でプロジェクトを作り Block Design をロードする.#####
 
-Vivado> OpenProject > ZYBO_PUMP/project/project.xpr
+Vivado> Tools > Run Tcl Script > ./project/create_project.tcl
 
-#####1.4. 必要なソースファイルを生成する.#####
-
-Vivado> Flow Navigator > Generate Block Design > Generate
-
-#####1.5. 論理合成をする.#####
+#####1.4. 論理合成をする.#####
 
 Vivado> Flow Navigator > Run Synthesis
 
-#####1.6. 配置配線をする.#####
+#####1.5. 配置配線をする.#####
 
 Vivado> Flow Navigator > Run Implementation 
 
-#####1.7. ビットストリームファイルを生成する.#####
+#####1.6. ビットストリームファイルを生成する.#####
 
 Vivado> Flow Navigator > Generate Bitstream
 
 これで project/project.runs/impl_1/design_1_wrapper.bit が出来ます.
 
-#####1.8. SDKのためにハードウェア情報をエクスポートする.#####
+#####1.7. SDKのためにハードウェア情報をエクスポートする.#####
 
 Vivado> File > Export > Export Hardware > Export to: <Local to Project> > OK
 
 これで project/project.sdk/design_1_wrapper.hdf が出来ます.
 
-#####1.9. SDKを起動する.#####
+#####1.8. SDKを起動する.#####
 
 Vivado> File > Launch SDK > Exported location:<Local to Project> Workspace:<Local Project> > OK
 
-#####1.10. FSBL(First Stage Boot Loader)を生成する.#####
+#####1.9. FSBL(First Stage Boot Loader)を生成する.#####
 
 SDK> File > New > Aplication Project
 
@@ -94,12 +90,12 @@ SDK> File > New > Aplication Project
 
 Finishボタンを押すと自動的に project/project.sdk/fsbl/Debug/fsbl.elf が生成されます.
 
-#####1.11. u-bootを生成する.#####
+#####1.10. u-bootを生成する.#####
 
 このプロジェクトでは u-boot の作成は行いません. 
 とりあえず適当に作った u-boot.elf を ./boot に入れておきました.
 
-#####1.12. BOOT.binを生成する.#####
+#####1.11. BOOT.binを生成する.#####
 
 Xilinx社のツールが起動するシェル環境(Vivado Tcl Shellなど)で次のコマンドを入力.
 
