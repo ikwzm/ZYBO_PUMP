@@ -53,6 +53,9 @@
 #define PUMP_PROC_REGS_ADDR_HI     (0x04)
 #define PUMP_PROC_REGS_RESERVE     (0x08)
 #define PUMP_PROC_REGS_CTRL_STAT   (0x0C)
+#define PUMP_PROC_REGS_MODE        (0x0C)
+#define PUMP_PROC_REGS_STAT        (0x0E)
+#define PUMP_PROC_REGS_CTRL        (0x0F)
 /******************************************************************************
  * Pump Processor Mode Register
  ******************************************************************************
@@ -61,10 +64,10 @@
  * Mode[07:04] = AXI4 Master Read I/F のキャッシュモードを指定する.
  * Mode[12:08] = AXI4 Master Read I/F の ARUSER/AWUSER の値を指定する.
  ******************************************************************************/
+#define PUMP_PROC_REGS_MODE_POS    4
+#define PUMP_PROC_REGS_MODE_MASK   (0x0000FFF0)
 #define PUMP_PROC_REGS_IE_DONE     (0x00000001)
 #define PUMP_PROC_REGS_IE_FETCH    (0x00000002)
-#define PUMP_PROC_REGS_MODE_MASK   (0x0000FFF0)
-#define PUMP_PROC_REGS_MODE_POS    4
 /******************************************************************************
  * Pump Processor Status Register
  ******************************************************************************
@@ -75,12 +78,12 @@
  * Status[4]   = 1:転送時にエラーが発生した事を示す.
  ******************************************************************************/
 #define PUMP_PROC_REGS_STAT_POS    16
-#define PUMP_PROC_REGS_STAT_ALL    (0x00FF0000)
-#define PUMP_PROC_REGS_STAT_DONE   (0x00010000)
-#define PUMP_PROC_REGS_STAT_FETCH  (0x00020000)
-#define PUMP_PROC_REGS_STAT_OERR   (0x00040000)
-#define PUMP_PROC_REGS_STAT_FERR   (0x00080000)
-#define PUMP_PROC_REGS_STAT_MERR   (0x00100000)
+#define PUMP_PROC_REGS_STAT_MASK   (0x00FF0000)
+#define PUMP_PROC_REGS_STAT_DONE   (0x01)
+#define PUMP_PROC_REGS_STAT_FETCH  (0x02)
+#define PUMP_PROC_REGS_STAT_OERR   (0x04)
+#define PUMP_PROC_REGS_STAT_FERR   (0x08)
+#define PUMP_PROC_REGS_STAT_MERR   (0x10)
 /******************************************************************************
  * Pump Processor Control Register
  ******************************************************************************
@@ -89,16 +92,12 @@
  * Control[6]  = 1:オペレーションを一時中断する. 0:オペレーションを再開する.
  * Control[7]  = 1:モジュールをリセットする.     0:リセットを解除する.
  ******************************************************************************/
-#define PUMP_PROC_REGS_CTRL_START  (0x10000000)
-#define PUMP_PROC_REGS_CTRL_STOP   (0x20000000)
-#define PUMP_PROC_REGS_CTRL_PAUSE  (0x40000000)
-#define PUMP_PROC_REGS_CTRL_RESET  (0x80000000)
-
-/******************************************************************************
- *  Register read/write access routines
- ******************************************************************************/
-#define regs_write(offset, val)	__raw_writel(cpu_to_le32(val), offset)
-#define regs_read(offset)       le32_to_cpu(__raw_readl(offset))
+#define PUMP_PROC_REGS_CTRL_POS    24
+#define PUMP_PROC_REGS_CTRL_MASK   (0xFF000000)
+#define PUMP_PROC_REGS_CTRL_START  (0x10)
+#define PUMP_PROC_REGS_CTRL_STOP   (0x20)
+#define PUMP_PROC_REGS_CTRL_PAUSE  (0x40)
+#define PUMP_PROC_REGS_CTRL_RESET  (0x80)
 
 /******************************************************************************
  * Operation Code Foramt
@@ -539,25 +538,32 @@ int  pump_proc_start(struct pump_proc_data* this)
 {
     unsigned long         irq_flags;
     struct opecode_table* opecode_table;
-    volatile u32          ctrl_stat_regs;
+    dma_addr_t            op_addr;
+    u32                   op_addr_lo;
+    u32                   op_addr_hi;
+    u32                   op_ctrl;
+    volatile u32          ctrl_stat;
 
     if (list_empty(&this->op_list))
         return -EINVAL;
 
-    opecode_table  = list_first_entry(&this->op_list, struct opecode_table, list);
-    ctrl_stat_regs = PUMP_PROC_REGS_CTRL_START | 
-                     ((this->link_mode << PUMP_PROC_REGS_MODE_POS) & PUMP_PROC_REGS_MODE_MASK) |
-                     PUMP_PROC_REGS_IE_DONE;
+    opecode_table = list_first_entry(&this->op_list, struct opecode_table, list);
+    op_addr       = opecode_table->dma_addr;
+    op_addr_lo    = (sizeof(op_addr) > 4) ? ((op_addr    ) & 0xFFFFFFFF) : op_addr;
+    op_addr_hi    = (sizeof(op_addr) > 4) ? ((op_addr>>32) & 0xFFFFFFFF) : 0;
+    op_ctrl       = ((PUMP_PROC_REGS_CTRL_START << PUMP_PROC_REGS_CTRL_POS) & PUMP_PROC_REGS_CTRL_MASK) | 
+                    ((this->link_mode           << PUMP_PROC_REGS_MODE_POS) & PUMP_PROC_REGS_MODE_MASK) |
+                    PUMP_PROC_REGS_IE_DONE;
 
     spin_lock_irqsave(&this->irq_lock, irq_flags);
-    this->status = 0;
-    regs_write(this->regs_addr+PUMP_PROC_REGS_ADDR_LO  , opecode_table->dma_addr);
-    regs_write(this->regs_addr+PUMP_PROC_REGS_ADDR_HI  , 0);
-    regs_write(this->regs_addr+PUMP_PROC_REGS_RESERVE  , 0);
-    regs_write(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT, ctrl_stat_regs);
-
-    ctrl_stat_regs = regs_read(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT);
-
+    {
+        this->status = 0;
+        iowrite32(cpu_to_le32(op_addr_lo), this->regs_addr+PUMP_PROC_REGS_ADDR_LO  );
+        iowrite32(cpu_to_le32(op_addr_hi), this->regs_addr+PUMP_PROC_REGS_ADDR_HI  );
+        iowrite32(0x00000000             , this->regs_addr+PUMP_PROC_REGS_RESERVE  );
+        iowrite32(cpu_to_le32(op_ctrl   ), this->regs_addr+PUMP_PROC_REGS_CTRL_STAT);
+        ctrl_stat = le32_to_cpu(ioread32(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT));
+    }
     spin_unlock_irqrestore(&this->irq_lock, irq_flags);
 
     return 0;
@@ -568,14 +574,14 @@ int  pump_proc_start(struct pump_proc_data* this)
  */
 int pump_proc_stop(struct pump_proc_data* this)
 {
-    volatile u32  ctrl_stat_regs;
+    volatile u32  ctrl_stat;
     unsigned long irq_flags;
 
     spin_lock_irqsave(&this->irq_lock, irq_flags);
 
-    regs_write(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT, PUMP_PROC_REGS_CTRL_STOP);
+    iowrite8(PUMP_PROC_REGS_CTRL_STOP, this->regs_addr+PUMP_PROC_REGS_CTRL);
 
-    ctrl_stat_regs = regs_read(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT);
+    ctrl_stat = le32_to_cpu(ioread32(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT));
 
     spin_unlock_irqrestore(&this->irq_lock, irq_flags);
 
@@ -587,22 +593,18 @@ int pump_proc_stop(struct pump_proc_data* this)
  */
 irqreturn_t pump_proc_irq(struct pump_proc_data* this)
 {
-    volatile u32 ctrl_stat_regs;
-
     if (this->debug & PUMP_PROC_DEBUG_IRQ)
         dev_info(this->dev, "pump_proc_irq(this=%pK)\n", this);
 
     spin_lock(&this->irq_lock);
-
-    ctrl_stat_regs = regs_read(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT);
-
-    if ((ctrl_stat_regs & PUMP_PROC_REGS_STAT_ALL) != 0) {
-        this->status   |= ((ctrl_stat_regs & PUMP_PROC_REGS_STAT_ALL) >> PUMP_PROC_REGS_STAT_POS);
-        ctrl_stat_regs &= ~PUMP_PROC_REGS_STAT_ALL;
-        regs_write(this->regs_addr+PUMP_PROC_REGS_CTRL_STAT,ctrl_stat_regs);
-        schedule_work(&this->irq_work);
+    {
+        volatile u8 stat_regs = ioread8(this->regs_addr+PUMP_PROC_REGS_STAT);
+        if (stat_regs != 0) {
+            this->status   |= stat_regs;
+            iowrite8(0x00, this->regs_addr+PUMP_PROC_REGS_STAT);
+            schedule_work(&this->irq_work);
+        }
     }
-
     spin_unlock(&this->irq_lock);
 
     if (this->debug & PUMP_PROC_DEBUG_IRQ)

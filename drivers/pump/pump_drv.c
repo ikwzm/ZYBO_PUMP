@@ -84,7 +84,7 @@
 /**
  *  Register read/write access routines
  */
-#define regs_read(offset)       le32_to_cpu(__raw_readl(offset))
+#define regs_read(offset)       le32_to_cpu(ioread32(offset))
 
 static struct class*  pump_sys_class     = NULL;
 static dev_t          pump_device_number = 0;
