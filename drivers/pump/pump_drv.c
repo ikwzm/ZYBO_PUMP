@@ -63,7 +63,9 @@
 
 #define PUMP_DEBUG         1
 #define PUMP_SG_PACK_MAX   ((0xFFFFFFFF & PAGE_MASK) >> PAGE_SHIFT)
-#define PUMP_TIMEOUT       (600*1000)
+
+#define PUMP_TIMEOUT_DEF   (10*60*1000)
+#define PUMP_TIMEOUT_MAX   (10*60*1000)
 
 #if     (PUMP_DEBUG == 1)
 #define PUMP_DEBUG_CHECK(this,debug) (this->debug)
@@ -110,6 +112,7 @@ struct pump_driver_data {
     struct pump_proc_data   pump_proc_data;
     wait_queue_head_t       wait_queue;
     unsigned long           limit_size;
+    unsigned long           timeout_msec;
 #if (PUMP_DEBUG == 1)
     bool                    debug_phase;
     bool                    debug_op_table;
@@ -151,7 +154,9 @@ static ssize_t pump_set_ ## __attr_name(struct device *dev, struct device_attrib
 DEF_ATTR_SHOW(direction      , "%d\n" , this->direction);
 DEF_ATTR_SHOW(dma_direction  , "%s\n" , (this->direction) ? "DMA_TO_DEVICE" : "DMA_FROM_DEVICE");
 DEF_ATTR_SHOW(limit_size     , "%lu\n", this->limit_size);
-DEF_ATTR_SET( limit_size     , 0, 0xFFFFFFFF, 0, 0);
+DEF_ATTR_SHOW(timeout_msec   , "%lu\n", this->timeout_msec);
+DEF_ATTR_SET( limit_size     , 0, 0xFFFFFFFF      , 0, 0);
+DEF_ATTR_SET( timeout_msec   , 0, PUMP_TIMEOUT_MAX, 0, 0);
 
 #if (PUMP_DEBUG == 1)
 DEF_ATTR_SHOW(debug_phase    , "%d\n", this->debug_phase    );
@@ -168,6 +173,7 @@ static const struct device_attribute pump_device_attrs[] = {
   __ATTR(direction      , 0644, pump_show_direction      , NULL),
   __ATTR(dma_direction  , 0644, pump_show_dma_direction  , NULL),
   __ATTR(limit_size     , 0644, pump_show_limit_size     , pump_set_limit_size     ),
+  __ATTR(timeout_msec   , 0644, pump_show_timeout_msec   , pump_set_timeout_msec   ),
 #if (PUMP_DEBUG == 1)
   __ATTR(debug_phase    , 0644, pump_show_debug_phase    , pump_set_debug_phase    ),
   __ATTR(debug_sg_table , 0644, pump_show_debug_sg_table , pump_set_debug_sg_table ),
@@ -528,7 +534,6 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
     size_t                   xfer_size  = 0;
     bool                     xfer_first = (*ppos == 0) ? 1 : 0;
     bool                     xfer_last;
-    unsigned long            timeout    = jiffies + msecs_to_jiffies(PUMP_TIMEOUT);
     /*
      *
      */
@@ -575,9 +580,9 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
         goto return_release;
     }
     status = wait_event_interruptible_timeout(
-                 this->wait_queue                  , /* wait_queue_head_t wq */
-                 (this->pump_proc_data.status != 0), /* bool condition       */
-                 timeout                             /* long timeout         */
+                 this->wait_queue                    , /* wait_queue_head_t wq */
+                 (this->pump_proc_data.status != 0)  , /* bool condition       */
+                 msecs_to_jiffies(this->timeout_msec)  /* long timeout         */
              );
     if (status == 0) {
         pump_proc_stop(&this->pump_proc_data);
@@ -626,7 +631,6 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
     size_t                   xfer_size  = count;
     bool                     xfer_first = (*ppos == 0) ? 1 : 0;
     bool                     xfer_last;
-    unsigned long            timeout    = jiffies + msecs_to_jiffies(PUMP_TIMEOUT);
     /*
      *
      */
@@ -674,9 +678,9 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
         goto return_release;
     }
     status = wait_event_interruptible_timeout(
-                 this->wait_queue                  , /* wait_queue_head_t wq */
-                 (this->pump_proc_data.status != 0), /* bool condition       */
-                 timeout                             /* long timeout         */
+                 this->wait_queue                    , /* wait_queue_head_t wq */
+                 (this->pump_proc_data.status != 0)  , /* bool condition       */
+                 msecs_to_jiffies(this->timeout_msec)  /* long timeout         */
              );
     if (status == 0) {
         pump_proc_stop(&this->pump_proc_data);
@@ -916,7 +920,8 @@ static int pump_driver_probe(struct platform_device *pdev)
     /*
      *
      */
-    this->limit_size = 0xFFFFFFFF;
+    this->limit_size   = 0xFFFFFFFF;
+    this->timeout_msec = PUMP_TIMEOUT_DEF;
     mutex_init(&this->sem);
     init_waitqueue_head(&this->wait_queue);
 
