@@ -53,6 +53,7 @@ struct pump_proc_data {
     unsigned int         link_mode;
     unsigned int         status;
     struct list_head     op_list;
+    bool                 irq_enable;
     struct work_struct   irq_work;
     void                 (*done_func)(void* done_arg);
     void*                done_arg;
@@ -84,7 +85,4 @@ int         pump_proc_add_opecode_table_from_sg(
                 bool                    xfer_last ,
                 unsigned int            xfer_mode
             );
-
-
-
 #endif

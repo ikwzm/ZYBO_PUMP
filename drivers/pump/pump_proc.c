@@ -98,7 +98,6 @@
 #define PUMP_PROC_REGS_CTRL_STOP   (0x20)
 #define PUMP_PROC_REGS_CTRL_PAUSE  (0x40)
 #define PUMP_PROC_REGS_CTRL_RESET  (0x80)
-
 /******************************************************************************
  * Operation Code Foramt
  ******************************************************************************
@@ -199,17 +198,18 @@ static inline void set_link_opecode(
     bool                 fetch    ,
     bool                 done     ,
     dma_addr_t           addr     , 
-    unsigned int         xfer_mode
+    unsigned int         xfer_mode,
+    bool                 irq_ena
 ){
     u32 addr_lo = (sizeof(addr) > 4) ? ((addr      ) & 0xFFFFFFFF) : addr;
     u32 addr_hi = (sizeof(addr) > 4) ? ((addr >> 32) & 0xFFFFFFFF) : 0;
+    u32 ctrl    = opecode_command(PUMP_PROC_OPECODE_LINK_TYPE, done, fetch) |
+                  ((xfer_mode << PUMP_PROC_OPECODE_LINK_MODE_POS) & PUMP_PROC_OPECODE_LINK_MODE_MASK) |
+                  ((irq_ena) ? PUMP_PROC_OPECODE_IE_DONE : 0);
     op_ptr->code[0] = cpu_to_le32(addr_lo);
     op_ptr->code[1] = cpu_to_le32(addr_hi);
     op_ptr->code[2] = 0x00000000;
-    op_ptr->code[3] = cpu_to_le32(opecode_command(PUMP_PROC_OPECODE_LINK_TYPE, done, fetch) |
-                                  ((xfer_mode << PUMP_PROC_OPECODE_LINK_MODE_POS) & PUMP_PROC_OPECODE_LINK_MODE_MASK) |
-                                  PUMP_PROC_OPECODE_IE_DONE
-                      );
+    op_ptr->code[3] = cpu_to_le32(ctrl);
 }
 /******************************************************************************
  * Operation Code(XFER)
@@ -257,14 +257,14 @@ static inline void set_xfer_opecode(
 ){
     u32 addr_lo = (sizeof(addr) > 4) ? ((addr      ) & 0xFFFFFFFF) : addr;
     u32 addr_hi = (sizeof(addr) > 4) ? ((addr >> 32) & 0xFFFFFFFF) : 0;
+    u32 ctrl    = opecode_command(PUMP_PROC_OPECODE_XFER_TYPE, done, fetch) |
+                  ((xfer_first) ? PUMP_PROC_OPECODE_XFER_FIRST_MASK : 0   ) |
+                  ((xfer_last ) ? PUMP_PROC_OPECODE_XFER_LAST_MASK  : 0   ) |
+                  ((xfer_mode << PUMP_PROC_OPECODE_XFER_MODE_POS) & PUMP_PROC_OPECODE_XFER_MODE_MASK);
     op_ptr->code[0] = cpu_to_le32(addr_lo);
     op_ptr->code[1] = cpu_to_le32(addr_hi);
     op_ptr->code[2] = cpu_to_le32(size);
-    op_ptr->code[3] = cpu_to_le32(opecode_command(PUMP_PROC_OPECODE_XFER_TYPE, done, fetch) |
-                                  ((xfer_first) ? PUMP_PROC_OPECODE_XFER_FIRST_MASK : 0   ) |
-                                  ((xfer_last ) ? PUMP_PROC_OPECODE_XFER_LAST_MASK  : 0   ) |
-                                  ((xfer_mode << PUMP_PROC_OPECODE_XFER_MODE_POS) & PUMP_PROC_OPECODE_XFER_MODE_MASK)
-                      );
+    op_ptr->code[3] = cpu_to_le32(ctrl);
 }
 static unsigned int fill_xfer_opecodes(
     struct opecode*      op_ptr    ,
@@ -348,6 +348,7 @@ static int alloc_opecode_table_from_sg(
     bool                xfer_last ,
     unsigned int        xfer_mode ,
     unsigned int        link_mode ,
+    bool                irq_enable,
     unsigned int        debug
 )
 {
@@ -448,7 +449,8 @@ static int alloc_opecode_table_from_sg(
                         0                   ,  /* bool            fetch  */
                         0                   ,  /* bool            done   */
                         next_table->dma_addr,  /* dma_addr_t      addr   */
-                        link_mode              /* unsigned int    mode   */
+                        link_mode           ,  /* unsigned int    mode   */
+                        irq_enable             /* bool            irq_ena*/
                     );
                     curr_table->op_nums++;
                 }
@@ -518,6 +520,7 @@ int  pump_proc_add_opecode_table_from_sg(
         xfer_last       , /* bool                xfer_last  */
         xfer_mode       , /* unsigned int        xfer_mode  */
         this->link_mode , /* unsigned int        link_mode  */
+        this->irq_enable, /* bool                irq_enable */
         this->debug       /* unsigned int        debug      */
     );
     return status;
@@ -553,7 +556,7 @@ int  pump_proc_start(struct pump_proc_data* this)
     op_addr_hi    = (sizeof(op_addr) > 4) ? ((op_addr>>32) & 0xFFFFFFFF) : 0;
     op_ctrl       = ((PUMP_PROC_REGS_CTRL_START << PUMP_PROC_REGS_CTRL_POS) & PUMP_PROC_REGS_CTRL_MASK) | 
                     ((this->link_mode           << PUMP_PROC_REGS_MODE_POS) & PUMP_PROC_REGS_MODE_MASK) |
-                    PUMP_PROC_REGS_IE_DONE;
+                    ((this->irq_enable) ? PUMP_PROC_REGS_IE_DONE : 0);
 
     spin_lock_irqsave(&this->irq_lock, irq_flags);
     {
@@ -643,16 +646,17 @@ int pump_proc_setup(
     void*                  done_arg
 )
 {
-    this->dev       = dev;
-    this->direction = direction;
-    this->regs_addr = regs_addr;
-    this->status    = 0;
-    this->link_mode = 0;
-    this->done_func = done_func;
-    this->done_arg  = done_arg;
-    this->debug     = 0;
+    this->dev        = dev;
+    this->direction  = direction;
+    this->regs_addr  = regs_addr;
+    this->status     = 0;
+    this->link_mode  = 0;
+    this->done_func  = done_func;
+    this->done_arg   = done_arg;
+    this->debug      = 0;
     spin_lock_init(&this->irq_lock);
     INIT_LIST_HEAD(&this->op_list);
+    this->irq_enable = 1;
     INIT_WORK(&this->irq_work, pump_proc_irq_work);
     return 0;
 }
