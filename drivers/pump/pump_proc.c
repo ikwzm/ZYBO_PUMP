@@ -202,8 +202,10 @@ static inline void set_link_opecode(
     dma_addr_t           addr     , 
     unsigned int         xfer_mode
 ){
-    op_ptr->code[0] = cpu_to_le32((addr >>  0) & 0xFFFFFFFF);
-    op_ptr->code[1] = cpu_to_le32((addr >> 32) & 0xFFFFFFFF);
+    u32 addr_lo = (sizeof(addr) > 4) ? ((addr      ) & 0xFFFFFFFF) : addr;
+    u32 addr_hi = (sizeof(addr) > 4) ? ((addr >> 32) & 0xFFFFFFFF) : 0;
+    op_ptr->code[0] = cpu_to_le32(addr_lo);
+    op_ptr->code[1] = cpu_to_le32(addr_hi);
     op_ptr->code[2] = 0x00000000;
     op_ptr->code[3] = cpu_to_le32(opecode_command(PUMP_PROC_OPECODE_LINK_TYPE, done, fetch) |
                                   ((xfer_mode << PUMP_PROC_OPECODE_LINK_MODE_POS) & PUMP_PROC_OPECODE_LINK_MODE_MASK) |
@@ -254,8 +256,10 @@ static inline void set_xfer_opecode(
     unsigned int         size      , 
     unsigned int         xfer_mode
 ){
-    op_ptr->code[0] = cpu_to_le32((addr >>  0) & 0xFFFFFFFF);
-    op_ptr->code[1] = cpu_to_le32((addr >> 32) & 0xFFFFFFFF);
+    u32 addr_lo = (sizeof(addr) > 4) ? ((addr      ) & 0xFFFFFFFF) : addr;
+    u32 addr_hi = (sizeof(addr) > 4) ? ((addr >> 32) & 0xFFFFFFFF) : 0;
+    op_ptr->code[0] = cpu_to_le32(addr_lo);
+    op_ptr->code[1] = cpu_to_le32(addr_hi);
     op_ptr->code[2] = cpu_to_le32(size);
     op_ptr->code[3] = cpu_to_le32(opecode_command(PUMP_PROC_OPECODE_XFER_TYPE, done, fetch) |
                                   ((xfer_first) ? PUMP_PROC_OPECODE_XFER_FIRST_MASK : 0   ) |
