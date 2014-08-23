@@ -114,6 +114,9 @@ struct pump_driver_data {
     wait_queue_head_t       wait_queue;
     unsigned long           limit_size;
     unsigned long           timeout_msec;
+    unsigned long           usec_buffer_setup;
+    unsigned long           usec_buffer_release;
+    unsigned long           usec_pump_run;
 #if (PUMP_DEBUG == 1)
     bool                    debug_phase;
     bool                    debug_op_table;
@@ -152,34 +155,40 @@ static ssize_t pump_set_ ## __attr_name(struct device *dev, struct device_attrib
     return status;                                                           \
 }
 
-DEF_ATTR_SHOW(direction      , "%d\n" , this->direction);
-DEF_ATTR_SHOW(dma_direction  , "%s\n" , (this->direction) ? "DMA_TO_DEVICE" : "DMA_FROM_DEVICE");
-DEF_ATTR_SHOW(limit_size     , "%lu\n", this->limit_size);
-DEF_ATTR_SHOW(timeout_msec   , "%lu\n", this->timeout_msec);
-DEF_ATTR_SET( limit_size     , 0, 0xFFFFFFFF      , 0, 0);
-DEF_ATTR_SET( timeout_msec   , 0, PUMP_TIMEOUT_MAX, 0, 0);
+DEF_ATTR_SHOW(direction           , "%d\n" , this->direction);
+DEF_ATTR_SHOW(dma_direction       , "%s\n" , (this->direction) ? "DMA_TO_DEVICE" : "DMA_FROM_DEVICE");
+DEF_ATTR_SHOW(limit_size          , "%lu\n", this->limit_size);
+DEF_ATTR_SHOW(timeout_msec        , "%lu\n", this->timeout_msec);
+DEF_ATTR_SHOW(usec_buffer_setup   , "%lu\n", this->usec_buffer_setup);
+DEF_ATTR_SHOW(usec_buffer_release , "%lu\n", this->usec_buffer_release);
+DEF_ATTR_SHOW(usec_pump_run       , "%lu\n", this->usec_pump_run);
+DEF_ATTR_SET( limit_size          , 0, 0xFFFFFFFF      , 0, 0);
+DEF_ATTR_SET( timeout_msec        , 0, PUMP_TIMEOUT_MAX, 0, 0);
 
 #if (PUMP_DEBUG == 1)
-DEF_ATTR_SHOW(debug_phase    , "%d\n", this->debug_phase    );
-DEF_ATTR_SHOW(debug_op_table , "%d\n", this->debug_op_table );
-DEF_ATTR_SHOW(debug_sg_table , "%d\n", this->debug_sg_table );
-DEF_ATTR_SHOW(debug_interrupt, "%d\n", this->debug_interrupt);
-DEF_ATTR_SET( debug_phase    , 0, 1, 0, 0);
-DEF_ATTR_SET( debug_op_table , 0, 1, 0, 0);
-DEF_ATTR_SET( debug_sg_table , 0, 1, 0, 0);
-DEF_ATTR_SET( debug_interrupt, 0, 1, 0, 0);
+DEF_ATTR_SHOW(debug_phase         , "%d\n", this->debug_phase    );
+DEF_ATTR_SHOW(debug_op_table      , "%d\n", this->debug_op_table );
+DEF_ATTR_SHOW(debug_sg_table      , "%d\n", this->debug_sg_table );
+DEF_ATTR_SHOW(debug_interrupt     , "%d\n", this->debug_interrupt);
+DEF_ATTR_SET( debug_phase         , 0, 1, 0, 0);
+DEF_ATTR_SET( debug_op_table      , 0, 1, 0, 0);
+DEF_ATTR_SET( debug_sg_table      , 0, 1, 0, 0);
+DEF_ATTR_SET( debug_interrupt     , 0, 1, 0, 0);
 #endif
 
 static const struct device_attribute pump_device_attrs[] = {
-  __ATTR(direction      , 0644, pump_show_direction      , NULL),
-  __ATTR(dma_direction  , 0644, pump_show_dma_direction  , NULL),
-  __ATTR(limit_size     , 0644, pump_show_limit_size     , pump_set_limit_size     ),
-  __ATTR(timeout_msec   , 0644, pump_show_timeout_msec   , pump_set_timeout_msec   ),
+  __ATTR(direction           , 0644, pump_show_direction           , NULL),
+  __ATTR(dma_direction       , 0644, pump_show_dma_direction       , NULL),
+  __ATTR(limit_size          , 0644, pump_show_limit_size          , pump_set_limit_size     ),
+  __ATTR(timeout_msec        , 0644, pump_show_timeout_msec        , pump_set_timeout_msec   ),
+  __ATTR(usec_buffer_setup   , 0644, pump_show_usec_buffer_setup   , NULL),
+  __ATTR(usec_buffer_release , 0644, pump_show_usec_buffer_release , NULL),
+  __ATTR(usec_pump_run       , 0644, pump_show_usec_pump_run       , NULL),
 #if (PUMP_DEBUG == 1)
-  __ATTR(debug_phase    , 0644, pump_show_debug_phase    , pump_set_debug_phase    ),
-  __ATTR(debug_sg_table , 0644, pump_show_debug_sg_table , pump_set_debug_sg_table ),
-  __ATTR(debug_op_table , 0644, pump_show_debug_op_table , pump_set_debug_op_table ),
-  __ATTR(debug_interrupt, 0644, pump_show_debug_interrupt, pump_set_debug_interrupt),
+  __ATTR(debug_phase         , 0644, pump_show_debug_phase         , pump_set_debug_phase    ),
+  __ATTR(debug_sg_table      , 0644, pump_show_debug_sg_table      , pump_set_debug_sg_table ),
+  __ATTR(debug_op_table      , 0644, pump_show_debug_op_table      , pump_set_debug_op_table ),
+  __ATTR(debug_interrupt     , 0644, pump_show_debug_interrupt     , pump_set_debug_interrupt),
 #endif
   __ATTR_NULL,
 };
@@ -388,9 +397,14 @@ static int  pump_buffer_setup(
 )
 {
     int  result = 0;
+    u64  start_time;
 
     if (PUMP_DEBUG_CHECK(this,debug_phase))
         dev_info(this->dev, "pump_buffer_setup(%pK,%d)\n", buff, *xfer_size);
+    /*
+     *
+     */
+    start_time = get_jiffies_64();
     /*
      * user buffer to page_list
      */
@@ -417,6 +431,13 @@ static int  pump_buffer_setup(
         xfer_last            , /* bool                    xfer_last  */
         PUMP_XFER_AXI_MODE     /* unsigned int            xfer_mode  */
     );
+    /*
+     *
+     */
+    this->usec_buffer_setup += jiffies_to_usecs((unsigned long)(get_jiffies_64() - start_time));
+    /*
+     *
+     */
     if (PUMP_DEBUG_CHECK(this,debug_op_table))
         pump_proc_debug_buf_list(&this->pump_proc_data, &this->pump_buf_list);
 
@@ -437,9 +458,12 @@ static void pump_buffer_release(struct pump_driver_data* this)
 {
     int  i;
     int  dma_direction = (this->direction) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
+    u64  start_time;
 
     if (PUMP_DEBUG_CHECK(this,debug_phase))
         dev_info(this->dev, "pump_buffer_release()\n");
+
+    start_time = get_jiffies_64();
 
     pump_proc_clear_buf_list(&this->pump_proc_data, &this->pump_buf_list);
 
@@ -465,6 +489,7 @@ static void pump_buffer_release(struct pump_driver_data* this)
         this->page_list = NULL;
         this->page_nums = 0;
     }
+    this->usec_buffer_release += jiffies_to_usecs((unsigned long)(get_jiffies_64() - start_time));
 }
 
 /**
@@ -481,6 +506,9 @@ static int pump_open(struct inode *inode, struct file *file)
     driver_data = container_of(inode->i_cdev, struct pump_driver_data, cdev);
     file->private_data   = driver_data;
     driver_data->is_open = 1;
+    driver_data->usec_buffer_setup   = 0;
+    driver_data->usec_buffer_release = 0;
+    driver_data->usec_pump_run       = 0;
 
     return status;
 }
@@ -536,6 +564,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
     size_t                   xfer_size  = 0;
     bool                     xfer_first = (*ppos == 0) ? 1 : 0;
     bool                     xfer_last;
+    u64                      start_time;
     /*
      *
      */
@@ -576,6 +605,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
     /*
      *
      */
+    start_time = get_jiffies_64();
     status = pump_proc_start(&this->pump_proc_data, &this->pump_buf_list);
     if (status != 0) {
         result = status;
@@ -591,6 +621,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
         result = -ETIMEDOUT;
         goto return_release;
     }
+    this->usec_pump_run += jiffies_to_usecs((unsigned long)(get_jiffies_64() - start_time));
     if (0) {
         dev_info(this->dev, "STAT=%08X\n", this->pump_proc_data.status);
         dev_info(this->dev, "CORE=%08X,%08X,%08X\n", 
@@ -633,6 +664,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
     size_t                   xfer_size  = count;
     bool                     xfer_first = (*ppos == 0) ? 1 : 0;
     bool                     xfer_last;
+    u64                      start_time;
     /*
      *
      */
@@ -674,6 +706,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
     /*
      *
      */
+    start_time = get_jiffies_64();
     status = pump_proc_start(&this->pump_proc_data, &this->pump_buf_list);
     if (status != 0) {
         result = status;
@@ -689,6 +722,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
         result = -ETIMEDOUT;
         goto return_release;
     }
+    this->usec_pump_run += jiffies_to_usecs((unsigned long)(get_jiffies_64() - start_time));
     if (0) {
         dev_info(this->dev, "STAT=%08X\n", this->pump_proc_data.status);
         dev_info(this->dev, "CORE=%08X,%08X,%08X\n", 
@@ -924,6 +958,9 @@ static int pump_driver_probe(struct platform_device *pdev)
      */
     this->limit_size   = 0xFFFFFFFF;
     this->timeout_msec = PUMP_TIMEOUT_DEF;
+    this->usec_buffer_setup   = 0;
+    this->usec_buffer_release = 0;
+    this->usec_pump_run       = 0;
     mutex_init(&this->sem);
     INIT_LIST_HEAD(&this->pump_buf_list);
     init_waitqueue_head(&this->wait_queue);
