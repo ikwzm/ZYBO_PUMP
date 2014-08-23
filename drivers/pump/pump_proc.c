@@ -99,7 +99,7 @@
 #define PUMP_PROC_REGS_CTRL_PAUSE  (0x40)
 #define PUMP_PROC_REGS_CTRL_RESET  (0x80)
 /******************************************************************************
- * Operation Code Foramt
+ * Operation Code Foramt(TEMPLATE)
  ******************************************************************************
  *           31            24              16               8               0
  *           +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -341,7 +341,7 @@ static void free_opecode_table(struct device* dev, struct list_head* table_list)
 }
 static int alloc_opecode_table_from_sg(
     struct device*      dev       ,
-    struct list_head*   table_list,
+    struct list_head*   buf_list  ,
     struct scatterlist* sg_list   , 
     unsigned int        sg_nums   , 
     bool                xfer_first, 
@@ -458,7 +458,7 @@ static int alloc_opecode_table_from_sg(
         }
     }
 
-    list_splice(&new_table_list, table_list->prev);
+    list_splice(&new_table_list, buf_list->prev);
 
     return 0;
 
@@ -470,14 +470,14 @@ static int alloc_opecode_table_from_sg(
 /**
  *
  */
-void pump_proc_debug_opecode_table(struct pump_proc_data* this)
+void pump_proc_debug_buf_list(struct pump_proc_data* this, struct list_head* buf_list)
 {
     struct list_head*     curr_head;
     struct opecode_table* curr_table;
     unsigned int          t;
     unsigned int          i;
     t = 0;
-    list_for_each(curr_head, &this->op_list) {
+    list_for_each(curr_head, buf_list) {
         curr_table = list_entry(curr_head, struct opecode_table, list);
         dev_info(this->dev, "ope_table(%d) num=%d ptr=%pK size=%d dma_addr=%08X\n", 
                  t, 
@@ -501,8 +501,9 @@ void pump_proc_debug_opecode_table(struct pump_proc_data* this)
 /**
  *
  */
-int  pump_proc_add_opecode_table_from_sg(
+int  pump_proc_add_buf_list_from_sg(
     struct pump_proc_data*  this      ,
+    struct list_head*       buf_list  ,
     struct scatterlist*     sg_list   , 
     unsigned int            sg_nums   , 
     bool                    xfer_first, 
@@ -513,7 +514,7 @@ int  pump_proc_add_opecode_table_from_sg(
     int status;
     status = alloc_opecode_table_from_sg(
         this->dev       , /* struct device*      dev        */
-        &this->op_list  , /* struct list_head*   table_list */
+        buf_list        , /* struct list_head*   table_list */
         sg_list         , /* struct scatterlist* sg_list    */
         sg_nums         , /* unsigned int        sg_nums    */
         xfer_first      , /* bool                xfer_first */
@@ -529,15 +530,15 @@ int  pump_proc_add_opecode_table_from_sg(
 /**
  *
  */
-void pump_proc_clear_opcode_table(struct pump_proc_data* this)
+void pump_proc_clear_buf_list(struct pump_proc_data* this, struct list_head* buf_list)
 {
-    free_opecode_table(this->dev, &this->op_list);
+    free_opecode_table(this->dev, buf_list);
 }
 
 /**
  *
  */
-int  pump_proc_start(struct pump_proc_data* this)
+int  pump_proc_start(struct pump_proc_data* this, struct list_head* buf_list)
 {
     unsigned long         irq_flags;
     struct opecode_table* opecode_table;
@@ -547,10 +548,10 @@ int  pump_proc_start(struct pump_proc_data* this)
     u32                   op_ctrl;
     volatile u32          ctrl_stat;
 
-    if (list_empty(&this->op_list))
+    if (list_empty(buf_list))
         return -EINVAL;
 
-    opecode_table = list_first_entry(&this->op_list, struct opecode_table, list);
+    opecode_table = list_first_entry(buf_list, struct opecode_table, list);
     op_addr       = opecode_table->dma_addr;
     op_addr_lo    = (sizeof(op_addr) > 4) ? ((op_addr    ) & 0xFFFFFFFF) : op_addr;
     op_addr_hi    = (sizeof(op_addr) > 4) ? ((op_addr>>32) & 0xFFFFFFFF) : 0;
@@ -655,7 +656,6 @@ int pump_proc_setup(
     this->done_arg   = done_arg;
     this->debug      = 0;
     spin_lock_init(&this->irq_lock);
-    INIT_LIST_HEAD(&this->op_list);
     this->irq_enable = 1;
     INIT_WORK(&this->irq_work, pump_proc_irq_work);
     return 0;
@@ -666,7 +666,5 @@ int pump_proc_setup(
 int pump_proc_cleanup(struct pump_proc_data* this)
 {
     cancel_work_sync(&this->irq_work);
-    free_opecode_table(this->dev, &this->op_list);
     return 0;
 }
-

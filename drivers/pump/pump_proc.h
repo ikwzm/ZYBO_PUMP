@@ -52,7 +52,6 @@ struct pump_proc_data {
     spinlock_t           irq_lock;
     unsigned int         link_mode;
     unsigned int         status;
-    struct list_head     op_list;
     bool                 irq_enable;
     struct work_struct   irq_work;
     void                 (*done_func)(void* done_arg);
@@ -71,14 +70,15 @@ int         pump_proc_setup(
                 void                   (*done_func)(void* done_args),
                 void*                  done_arg
             );
-int         pump_proc_cleanup(struct pump_proc_data* this);
-irqreturn_t pump_proc_irq    (struct pump_proc_data* this);
-int         pump_proc_start  (struct pump_proc_data* this);
-int         pump_proc_stop   (struct pump_proc_data* this);
-void        pump_proc_debug_opecode_table(struct pump_proc_data* this);
-void        pump_proc_clear_opcode_table (struct pump_proc_data* this);
-int         pump_proc_add_opecode_table_from_sg(
+int         pump_proc_cleanup       (struct pump_proc_data* this);
+irqreturn_t pump_proc_irq           (struct pump_proc_data* this);
+int         pump_proc_start         (struct pump_proc_data* this, struct list_head* buf_list);
+int         pump_proc_stop          (struct pump_proc_data* this);
+void        pump_proc_debug_buf_list(struct pump_proc_data* this, struct list_head* buf_list);
+void        pump_proc_clear_buf_list(struct pump_proc_data* this, struct list_head* buf_list);
+int         pump_proc_add_buf_list_from_sg(
                 struct pump_proc_data*  this      ,
+                struct list_head*       buf_list  ,
                 struct scatterlist*     sg_list   , 
                 unsigned int            sg_nums   , 
                 bool                    xfer_first, 

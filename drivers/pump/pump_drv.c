@@ -109,6 +109,7 @@ struct pump_driver_data {
     struct page**           page_list;
     struct sg_table         sg_table;
     unsigned int            sg_nums;
+    struct list_head        pump_buf_list;
     struct pump_proc_data   pump_proc_data;
     wait_queue_head_t       wait_queue;
     unsigned long           limit_size;
@@ -398,17 +399,18 @@ static int  pump_buffer_setup(
         goto failed;
     /* pump_debug_pages(this); */
     /*
-     * page_list to sg_list
+     * page_list to sg_table
      */
     result = pump_alloc_sg_table_from_pages(this, buff, *xfer_size);
     if (result) 
         goto failed;
     /* pump_debug_sg_table(this); */
     /*
-     * sg_list to op_list
+     * sg_table to pump_buf_list
      */
-    result = pump_proc_add_opecode_table_from_sg(
+    result = pump_proc_add_buf_list_from_sg(
         &this->pump_proc_data, /* struct pump_proc_data*  this       */
+        &this->pump_buf_list , /* struct list_head*       buf_list   */
         this->sg_table.sgl   , /* struct scatterlist*     sg_list    */
         this->sg_nums        , /* unsigned int            sg_nums    */
         xfer_first           , /* bool                    xfer_first */
@@ -416,7 +418,7 @@ static int  pump_buffer_setup(
         PUMP_XFER_AXI_MODE     /* unsigned int            xfer_mode  */
     );
     if (PUMP_DEBUG_CHECK(this,debug_op_table))
-        pump_proc_debug_opecode_table(&this->pump_proc_data);
+        pump_proc_debug_buf_list(&this->pump_proc_data, &this->pump_buf_list);
 
     if (PUMP_DEBUG_CHECK(this,debug_phase))
         dev_info(this->dev, "pump_buffer_setup() => success\n");
@@ -439,7 +441,7 @@ static void pump_buffer_release(struct pump_driver_data* this)
     if (PUMP_DEBUG_CHECK(this,debug_phase))
         dev_info(this->dev, "pump_buffer_release()\n");
 
-    pump_proc_clear_opcode_table(&this->pump_proc_data);
+    pump_proc_clear_buf_list(&this->pump_proc_data, &this->pump_buf_list);
 
     if (this->sg_nums != 0) {
         dma_unmap_sg(this->dev, this->sg_table.sgl, this->sg_table.nents, dma_direction);
@@ -574,7 +576,7 @@ static ssize_t pump_read(struct file* file, char __user* buff, size_t count, lof
     /*
      *
      */
-    status = pump_proc_start(&this->pump_proc_data);
+    status = pump_proc_start(&this->pump_proc_data, &this->pump_buf_list);
     if (status != 0) {
         result = status;
         goto return_release;
@@ -672,7 +674,7 @@ static ssize_t pump_write(struct file* file, const char __user* buff, size_t cou
     /*
      *
      */
-    status = pump_proc_start(&this->pump_proc_data);
+    status = pump_proc_start(&this->pump_proc_data, &this->pump_buf_list);
     if (status != 0) {
         result = status;
         goto return_release;
@@ -923,6 +925,7 @@ static int pump_driver_probe(struct platform_device *pdev)
     this->limit_size   = 0xFFFFFFFF;
     this->timeout_msec = PUMP_TIMEOUT_DEF;
     mutex_init(&this->sem);
+    INIT_LIST_HEAD(&this->pump_buf_list);
     init_waitqueue_head(&this->wait_queue);
 
 #if (PUMP_DEBUG == 1)
@@ -999,6 +1002,7 @@ static int pump_driver_remove(struct platform_device *pdev)
     if (!this)
         return -ENODEV;
 
+    pump_proc_clear_buf_list(&this->pump_proc_data, &this->pump_buf_list);
     pump_proc_cleanup(&this->pump_proc_data);
 
     device_destroy(pump_sys_class, this->device_number);
