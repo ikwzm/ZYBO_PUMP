@@ -13,7 +13,7 @@ lappend ip_repo_path_list   [file join $project_directory ".." "PUMP_AXI4" "targ
 #
 # Create project
 #
-create_project $project_name $project_directory
+create_project -force $project_name $project_directory
 #
 # Set project properties
 #

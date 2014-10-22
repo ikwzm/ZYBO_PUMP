@@ -10,12 +10,14 @@
 ################################################################
 # Check if script is running in correct Vivado version.
 ################################################################
-set scripts_vivado_version 2014.2
-set current_vivado_version [version -short]
+array set available_vivado_version_list {"2014.2" "ok"}
+array set available_vivado_version_list {"2014.3" "ok"}
+set available_vivado_version [array names available_vivado_version_list]
+set current_vivado_version   [version -short]
 
-if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
+if { [string first [lindex [array get available_vivado_version_list $current_vivado_version] 1] "ok"] == -1 } {
    puts ""
-   puts "ERROR: This script was generated using Vivado <$scripts_vivado_version> and is being run in <$current_vivado_version> of Vivado. Please run the script in Vivado <$scripts_vivado_version> then open the design in Vivado <$current_vivado_version>. Upgrade the design by running \"Tools => Report => Report IP Status...\", then run write_bd_tcl to create an updated script."
+   puts "ERROR: This script was generated using Vivado <$available_vivado_version> and is being run in <$current_vivado_version> of Vivado. Please run the script in Vivado <$available_vivado_version> then open the design in Vivado <$current_vivado_version>. Upgrade the design by running \"Tools => Report => Report IP Status...\", then run write_bd_tcl to create an updated script."
 
    return 1
 }
@@ -150,8 +152,14 @@ proc create_root_design { parentCell } {
   set proc_sys_reset_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_0 ]
 
   # Create instance: processing_system7_0, and set properties
-  set processing_system7_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.4 processing_system7_0 ]
-  set_property -dict [ list CONFIG.PCW_IMPORT_BOARD_PRESET "ZYBO_zynq_def.xml" CONFIG.PCW_IRQ_F2P_INTR {1} CONFIG.PCW_USE_FABRIC_INTERRUPT {1} CONFIG.PCW_USE_S_AXI_ACP {1}  ] $processing_system7_0
+  if { [string equal [version -short] "2014.2"] == 1 } {
+    set processing_system7_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.4 processing_system7_0 ]
+    set_property -dict [ list CONFIG.PCW_IMPORT_BOARD_PRESET "ZYBO_zynq_def.xml" CONFIG.PCW_IRQ_F2P_INTR {1} CONFIG.PCW_USE_FABRIC_INTERRUPT {1} CONFIG.PCW_USE_S_AXI_ACP {1}  ] $processing_system7_0
+  }
+  if { [string equal [version -short] "2014.3"] == 1 } {
+    set processing_system7_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 processing_system7_0 ]
+    set_property -dict [ list CONFIG.PCW_IMPORT_BOARD_PRESET "ZYBO_zynq_def.xml" CONFIG.PCW_IRQ_F2P_INTR {1} CONFIG.PCW_USE_FABRIC_INTERRUPT {1} CONFIG.PCW_USE_S_AXI_ACP {1}  ] $processing_system7_0
+  }
 
   # Create instance: pump_axi3_to_axi3_v0_8_0, and set properties
   set pump_axi3_to_axi3_v0_8_0 [ create_bd_cell -type ip -vlnv ikwzm:pipework:pump_axi3_to_axi3_v0_8:0.8 pump_axi3_to_axi3_v0_8_0 ]
