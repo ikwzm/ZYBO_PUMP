@@ -7,7 +7,6 @@ set project_name            "project"
 set device_parts            "xc7z010clg400-1"
 set design_bd_tcl_file      [file join $project_directory "design_1_bd.tcl"  ]
 set design_pin_xdc_file     [file join $project_directory "design_1_pin.xdc" ]
-set import_board_preset     [file join $project_directory "ZYBO_zynq_def.xml"]
 lappend ip_repo_path_list   [file join $project_directory ".." "LED_AXI"   "target" "xilinx" "ip"]
 lappend ip_repo_path_list   [file join $project_directory ".." "PUMP_AXI4" "target" "xilinx" "ip"]
 #
@@ -68,10 +67,6 @@ update_ip_catalog
 # Create block design
 #
 source $design_bd_tcl_file
-#
-# Import board preset file 
-#
-set_property -dict [list CONFIG.PCW_IMPORT_BOARD_PRESET $import_board_preset] [get_bd_cells processing_system7_0]
 #
 # Save block design
 #
