@@ -13,6 +13,7 @@
 array set available_vivado_version_list {"2014.2"   "ok"}
 array set available_vivado_version_list {"2014.3"   "ok"}
 array set available_vivado_version_list {"2014.3.1" "ok"}
+array set available_vivado_version_list {"2014.4"   "ok"}
 set available_vivado_version [array names available_vivado_version_list]
 set current_vivado_version   [version -short]
 
@@ -160,7 +161,7 @@ proc create_root_design { parentCell } {
     set processing_system7_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.4 processing_system7_0 ]
     set_property -dict [ list CONFIG.PCW_IMPORT_BOARD_PRESET $import_board_preset CONFIG.PCW_IRQ_F2P_INTR {1} CONFIG.PCW_USE_FABRIC_INTERRUPT {1} CONFIG.PCW_USE_S_AXI_ACP {1} CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {125.0} ] $processing_system7_0
   }
-  if { [string match "2014.3*" [version -short] ] == 1 } {
+  if { [string match "2014.[34]*" [version -short] ] == 1 } {
     set processing_system7_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 processing_system7_0 ]
     set_property -dict [ list CONFIG.PCW_IMPORT_BOARD_PRESET $import_board_preset CONFIG.PCW_IRQ_F2P_INTR {1} CONFIG.PCW_USE_FABRIC_INTERRUPT {1} CONFIG.PCW_USE_S_AXI_ACP {1} CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {125.0} ] $processing_system7_0
   }
