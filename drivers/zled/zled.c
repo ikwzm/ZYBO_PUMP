@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2014 Ichiro Kawazome
+ *       Copyright (C) 2015 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -52,12 +52,19 @@
 #include <linux/pagemap.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
 
 
 #define DRIVER_NAME        "zled"
 #define DEVICE_NAME_FORMAT "zled%d"
+
+#if     (LINUX_VERSION_CODE >= 0x030B00)
+#define USE_DEV_GROUPS      1
+#else
+#define USE_DEV_GROUPS      0
+#endif
 
 static struct class*  zled_sys_class     = NULL;
 static dev_t          zled_device_number = 0;
@@ -135,7 +142,7 @@ static ssize_t zled_set_ ## __attr_name(struct device *dev, struct device_attrib
     unsigned long value;  \
     struct zled_driver_data* this = dev_get_drvdata(dev);              \
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
-    if (0 != (status = strict_strtoul(buf, 10, &value))) {     goto failed;} \
+    if (0 != (status = kstrtoul(buf, 10, &value)))       {     goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
     if (0 != (status = __pre_action )) {                       goto failed;} \
     this->__attr_name = value;                                               \
@@ -168,7 +175,7 @@ DEF_ATTR_SET( seqlast, 0,          5, 0, (zled_write_regs(this,1)));
 DEF_ATTR_SET( count  , 0, 0x0FFFFFFF, 0, (zled_write_regs(this,1)));
 DEF_ATTR_SET( start  , 0,          1, 0, (zled_write_regs(this,1)));
 
-static const struct device_attribute zled_device_attrs[] = {
+static struct device_attribute zled_device_attrs[] = {
   __ATTR(out    , 0644, zled_show_out    , zled_set_out    ),
   __ATTR(start  , 0644, zled_show_start  , zled_set_start  ),
   __ATTR(seq0   , 0644, zled_show_seq0   , zled_set_seq0   ),
@@ -181,6 +188,34 @@ static const struct device_attribute zled_device_attrs[] = {
   __ATTR(count  , 0644, zled_show_count  , zled_set_count  ),
   __ATTR_NULL,
 };
+
+#if (USE_DEV_GROUPS == 1)
+
+static struct attribute *zled_attrs[] = {
+  &(zled_device_attrs[ 0].attr),
+  &(zled_device_attrs[ 1].attr),
+  &(zled_device_attrs[ 2].attr),
+  &(zled_device_attrs[ 3].attr),
+  &(zled_device_attrs[ 4].attr),
+  &(zled_device_attrs[ 5].attr),
+  &(zled_device_attrs[ 6].attr),
+  &(zled_device_attrs[ 7].attr),
+  &(zled_device_attrs[ 8].attr),
+  &(zled_device_attrs[ 9].attr),
+  NULL
+};
+static struct attribute_group  zled_attr_group = {
+  .attrs = zled_attrs
+};
+static const struct attribute_group* zled_attr_groups[] = {
+  &zled_attr_group,
+  NULL
+};
+
+#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_groups = zled_attr_groups; }
+#else
+#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_attrs  = zled_device_attrs;}
+#endif
 
 /**
  * zled_open() - The is the driver open function.
@@ -449,7 +484,7 @@ static int __init zled_module_init(void)
         zled_sys_class = NULL;
         goto failed;
     }
-    zled_sys_class->dev_attrs = zled_device_attrs;
+    SET_SYS_CLASS_ATTRIBUTES(zled_sys_class);
     done |= DONE_CLASS_CREATE;
 
     retval = platform_driver_register(&zled_platform_driver);

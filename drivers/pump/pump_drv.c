@@ -1,7 +1,7 @@
 /*
  * pump_drv.c
  *
- * Copyright (C) 2014 Ichiro Kawazome
+ * Copyright (C) 2014-2015 Ichiro Kawazome
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -53,6 +53,7 @@
 #include <linux/pagemap.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
 
@@ -66,6 +67,12 @@
 
 #define PUMP_TIMEOUT_DEF   (10*60*1000)
 #define PUMP_TIMEOUT_MAX   (10*60*1000)
+
+#if     (LINUX_VERSION_CODE >= 0x030B00)
+#define USE_DEV_GROUPS      1
+#else
+#define USE_DEV_GROUPS      0
+#endif
 
 #if     (PUMP_DEBUG == 1)
 #define PUMP_DEBUG_CHECK(this,debug) (this->debug)
@@ -144,7 +151,7 @@ static ssize_t pump_set_ ## __attr_name(struct device *dev, struct device_attrib
     unsigned long value;  \
     struct pump_driver_data* this = dev_get_drvdata(dev);              \
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
-    if (0 != (status = strict_strtoul(buf, 10, &value))) {     goto failed;} \
+    if (0 != (status = kstrtoul(buf, 10, &value))) {           goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
     if (0 != (status = __pre_action )) {                       goto failed;} \
     this->__attr_name = value;                                               \
@@ -176,7 +183,7 @@ DEF_ATTR_SET( debug_sg_table      , 0, 1, 0, 0);
 DEF_ATTR_SET( debug_interrupt     , 0, 1, 0, 0);
 #endif
 
-static const struct device_attribute pump_device_attrs[] = {
+static struct device_attribute pump_device_attrs[] = {
   __ATTR(direction           , 0644, pump_show_direction           , NULL),
   __ATTR(dma_direction       , 0644, pump_show_dma_direction       , NULL),
   __ATTR(limit_size          , 0644, pump_show_limit_size          , pump_set_limit_size     ),
@@ -192,6 +199,37 @@ static const struct device_attribute pump_device_attrs[] = {
 #endif
   __ATTR_NULL,
 };
+
+#if (USE_DEV_GROUPS == 1)
+
+static struct attribute *pump_attrs[] = {
+  &(pump_device_attrs[ 0].attr),
+  &(pump_device_attrs[ 1].attr),
+  &(pump_device_attrs[ 2].attr),
+  &(pump_device_attrs[ 3].attr),
+  &(pump_device_attrs[ 4].attr),
+  &(pump_device_attrs[ 5].attr),
+  &(pump_device_attrs[ 6].attr),
+#if (PUMP_DEBUG == 1)
+  &(pump_device_attrs[ 7].attr),
+  &(pump_device_attrs[ 8].attr),
+  &(pump_device_attrs[ 9].attr),
+  &(pump_device_attrs[10].attr),
+#endif
+  NULL
+};
+static struct attribute_group  pump_attr_group = {
+  .attrs = pump_attrs
+};
+static const struct attribute_group* pump_attr_groups[] = {
+  &pump_attr_group,
+  NULL
+};
+
+#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_groups = pump_attr_groups; }
+#else
+#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_attrs  = pump_device_attrs;}
+#endif
 
 /**
  * pump_alloc_pages_from_user_buffer()
@@ -1120,7 +1158,8 @@ static int __init pump_module_init(void)
         pump_sys_class = NULL;
         goto failed;
     }
-    pump_sys_class->dev_attrs = pump_device_attrs;
+    SET_SYS_CLASS_ATTRIBUTES(pump_sys_class);
+
     done |= DONE_CREATE_CLASS;
 
     result = platform_driver_register(&pump_platform_driver);
