@@ -82,8 +82,8 @@
 
 #define PUMP_XFER_AXI_CACHE (0x03 <<  0)
 #define PUMP_XFER_AXI_USER  (0x01 <<  4)
-#define PUMP_XFER_AXI_SPEC  (1    <<  9)
-#define PUMP_XFER_AXI_SAFE  (1    << 10)
+#define PUMP_XFER_AXI_SPEC  (1    << 10)
+#define PUMP_XFER_AXI_SAFE  (1    << 11)
 
 #define PUMP_XFER_AXI_MODE  (PUMP_XFER_AXI_USER | PUMP_XFER_AXI_CACHE)
 #define PUMP_LINK_AXI_MODE  (PUMP_XFER_AXI_USER | PUMP_XFER_AXI_CACHE)
